@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Guess Secret Santa</title>
+    <style>
+        :root {
+            --bg: #fffcf2; --text: #4a4e69; --border: #f0ebe3;
+            --tomato: #ffadad; --banana: #fdffb6; --strawberry: #ffc6ff; 
+            --orange: #ffd6a5; --cherry: #ff8080; --default: #caffbf;
+        }
+        
+        /* Fix for iOS momentum scrolling and height */
+        html, body { 
+            height: 100%; 
+            -webkit-overflow-scrolling: touch;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
+            background-color: var(--bg); color: var(--text); 
+            text-align: center; padding: 15px; margin: 0;
+            overflow-x: hidden;
+        }
+
+        h1 { color: #d00000; font-size: 1.8rem; margin: 10px 0; }
+        
+        .setup { 
+            margin-bottom: 20px; background: white; padding: 15px; 
+            border-radius: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); 
+        }
+
+        .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        
+        /* Mobile-friendly inputs */
+        input, select { 
+            font-size: 16px !important; /* Prevents iPhone auto-zoom on focus */
+            padding: 12px; border: 2px solid var(--border); 
+            border-radius: 12px; outline: none;
+        }
+        input { flex: 2; }
+        select { flex: 1; background: white; }
+        
+        .btn-row { display: flex; gap: 8px; justify-content: center; }
+        button { 
+            padding: 12px 15px; border: none; border-radius: 12px; 
+            cursor: pointer; font-weight: bold; font-size: 0.9rem;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .add-btn { background: #ffd6a5; color: #854d0e; flex: 2; }
+        .undo-btn { background: #bdb2ff; color: white; flex: 1; }
+        .reset-btn { background: #f1f3f5; color: #868e96; flex: 1; }
+
+        /* Grid Layout Fix for older Safari */
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 10px; 
+            margin-bottom: 25px; 
+        }
+        
+        @media (max-width: 350px) {
+            .grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .player-box {
+            padding: 15px 5px; border-radius: 18px; 
+            cursor: pointer; user-select: none;
+            border: 3px solid rgba(255,255,255,0.5);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            -webkit-tap-highlight-color: transparent;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .fruit-icon { font-size: 1.8rem; margin-bottom: 4px; display: block; }
+        .p-name { font-weight: bold; font-size: 0.85rem; display: block; word-break: break-word; }
+        .p-score { font-size: 1.5rem; font-weight: 900; color: rgba(0,0,0,0.4); }
+
+        .leaderboard { 
+            background: white; border-radius: 20px; padding: 15px; 
+            max-width: 100%; margin: 10px auto 40px; 
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05); 
+        }
+        .lb-title { font-size: 1.1rem; margin-bottom: 10px; font-weight: bold; color: #d00000; }
+        .lb-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #eee; }
+    </style>
+</head>
+<body>
+
+    <h1>🎁 Secret Santa</h1>
+
+    <div class="setup">
+        <div class="input-group">
+            <input type="text" id="nameIn" placeholder="Name">
+            <select id="fruitIn">
+                <option value="🍎">🍎</option><option value="🍍">🍍</option>
+                <option value="🍉">🍉</option><option value="🥑">🥑</option>
+            </select>
+        </div>
+        <div class="btn-row">
+            <button class="add-btn" onclick="addPlayer()">+ Add</button>
+            <button class="undo-btn" onclick="undo()">↩</button>
+            <button class="reset-btn" onclick="resetGame()">Reset</button>
+        </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="leaderboard">
+        <div class="lb-title">🏆 Leaderboard</div>
+        <div id="lb-list"></div>
+    </div>
+
+    <script>
+        const fruitColors = {
+            '🍅': 'var(--tomato)', '🍌': 'var(--banana)', '🍓': 'var(--strawberry)',
+            '🍊': 'var(--orange)', '🍒': 'var(--cherry)', '🍎': '#ffadad', 
+            '🍍': '#fdffb6', '🍉': '#ffd6a5', '🥑': '#caffbf'
+        };
+
+        const defaults = [
+            { name: "mera", score: 0, icon: "🍅", color: "var(--tomato)" },
+            { name: "adnana", score: 0, icon: "🍌", color: "var(--banana)" },
+            { name: "lala", score: 0, icon: "🍓", color: "var(--strawberry)" },
+            { name: "roma", score: 0, icon: "🍊", color: "var(--orange)" },
+            { name: "tusma", score: 0, icon: "🍒", color: "var(--cherry)" }
+        ];
+
+        let players = [];
+        let history = [];
+
+        // iOS Safe LocalStorage
+        function init() {
+            try {
+                const saved = localStorage.getItem('santa_players');
+                players = saved ? JSON.parse(saved) : defaults;
+            } catch(e) {
+                players = defaults;
+            }
+            render();
+        }
+
+        function saveState() {
+            history.push(JSON.stringify(players));
+            if (history.length > 10) history.shift();
+        }
+
+        function addPlayer() {
+            const name = document.getElementById('nameIn').value.trim();
+            const icon = document.getElementById('fruitIn').value;
+            if (!name) return;
+            saveState();
+            players.push({ name, score: 0, icon, color: fruitColors[icon] || 'var(--default)' });
+            document.getElementById('nameIn').value = '';
+            render();
+        }
+
+        function addPoint(index) {
+            saveState();
+            players[index].score++;
+            render();
+        }
+
+        function undo() {
+            if (history.length === 0) return;
+            players = JSON.parse(history.pop());
+            render();
+        }
+
+        function resetGame() {
+            if (confirm("Reset all scores?")) {
+                saveState();
+                players.forEach(p => p.score = 0);
+                render();
+            }
+        }
+
+        function render() {
+            const grid = document.getElementById('grid');
+            const lbList = document.getElementById('lb-list');
+            
+            try {
+                localStorage.setItem('santa_players', JSON.stringify(players));
+            } catch(e) {}
+
+            grid.innerHTML = players.map((p, i) => `
+                <div class="player-box" onclick="addPoint(${i})" style="background:${p.color}">
+                    <span class="fruit-icon">${p.icon}</span>
+                    <span class="p-name">${p.name}</span>
+                    <span class="p-score">${p.score}</span>
+                </div>
+            `).join('');
+
+            const sorted = [...players].sort((a,b) => b.score - a.score);
+            lbList.innerHTML = sorted.map(p => `
+                <div class="lb-item">
+                    <span>${p.icon} ${p.name}</span>
+                    <b>${p.score} pts</b>
+                </div>
+            `).join('');
+        }
+
+        init();
+    </script>
+</body>
+</html>
